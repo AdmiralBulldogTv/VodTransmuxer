@@ -329,7 +329,7 @@ func (e *Encoder) EncodeAmf3Object(w io.Writer, val TypedObject, encodeMarker bo
 
 	if trait.Dynamic {
 		for k, v := range val.Object {
-			var foundProp bool = false
+			foundProp := false
 			for _, prop := range trait.Properties {
 				if prop == k {
 					foundProp = true

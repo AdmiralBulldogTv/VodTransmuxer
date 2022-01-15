@@ -201,7 +201,7 @@ func (s *Server) handleConn(conn *core.Conn) {
 					return
 				}
 				if err := os.Remove(fmt.Sprintf("%s/%s.flv", s.gCtx.Config().RTMP.WritePath, vodID.Hex())); err != nil {
-					logrus.Error("failed to remove vod from disk: %s : %s", fmt.Sprintf("%s/%s.flv", s.gCtx.Config().RTMP.WritePath, vodID.Hex()), err.Error())
+					logrus.Errorf("failed to remove vod from disk: %s : %s", fmt.Sprintf("%s/%s.flv", s.gCtx.Config().RTMP.WritePath, vodID.Hex()), err.Error())
 				}
 			} else {
 				logrus.Info("vod ended after: ", time.Since(start))

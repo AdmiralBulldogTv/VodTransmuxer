@@ -58,7 +58,6 @@ var (
 	PLAY    = "play"
 )
 
-// Header can be converted to AudioHeaderInfo or VideoHeaderInfo
 type Packet struct {
 	IsAudio    bool
 	IsVideo    bool
