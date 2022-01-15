@@ -1,10 +1,12 @@
 package rtmp
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"math"
 	"net"
+	"net/textproto"
 	"os"
 	"os/exec"
 	"strconv"
@@ -178,9 +180,10 @@ func (s *Server) handleConn(conn *core.Conn) {
 	appname, name, _ := connServer.GetInfo()
 	logrus.Debugf("handleConn: IsPublisher=%v", connServer.IsPublisher())
 	if connServer.IsPublisher() {
+		localLog := logrus.WithField("appname", appname).WithField("name", name)
 		s.gCtx.Inst().Prometheus.CurrentStreamCount().Inc()
-		logrus.Infof("New stream, %s/%s", appname, name)
-		defer logrus.Infof("Stopped stream, %s/%s", appname, name)
+		localLog.Infof("New stream, %s/%s", appname, name)
+		defer localLog.Infof("Stopped stream, %s/%s", appname, name)
 		s.wg.Add(1)
 		variants := []structures.VodVariant{}
 
@@ -190,7 +193,7 @@ func (s *Server) handleConn(conn *core.Conn) {
 			defer s.wg.Done()
 			connServer.Close()
 			if start.After(time.Now().Add(-time.Minute)) {
-				logrus.Info("vod canceled")
+				localLog.Info("vod canceled")
 				_, err := s.gCtx.Inst().Mongo.Collection(mongo.CollectionNameVods).UpdateOne(s.gCtx, bson.M{
 					"_id": vodID,
 				}, bson.M{
@@ -200,14 +203,14 @@ func (s *Server) handleConn(conn *core.Conn) {
 					},
 				})
 				if err != nil {
-					logrus.Error("mongo update error: ", err)
+					localLog.Error("mongo update error: ", err)
 					return
 				}
 				if err := os.Remove(fmt.Sprintf("%s/%s.flv", s.gCtx.Config().RTMP.WritePath, vodID.Hex())); err != nil {
-					logrus.Errorf("failed to remove vod from disk: %s : %s", fmt.Sprintf("%s/%s.flv", s.gCtx.Config().RTMP.WritePath, vodID.Hex()), err.Error())
+					localLog.Errorf("failed to remove vod from disk: %s : %s", fmt.Sprintf("%s/%s.flv", s.gCtx.Config().RTMP.WritePath, vodID.Hex()), err.Error())
 				}
 			} else {
-				logrus.Info("vod ended after: ", time.Since(start))
+				localLog.Info("vod ended after: ", time.Since(start))
 				_, err := s.gCtx.Inst().Mongo.Collection(mongo.CollectionNameVods).UpdateOne(s.gCtx, bson.M{
 					"_id": vodID,
 				}, bson.M{
@@ -218,7 +221,7 @@ func (s *Server) handleConn(conn *core.Conn) {
 					},
 				})
 				if err != nil {
-					logrus.Error("mongo update error: ", err)
+					localLog.Error("mongo update error: ", err)
 					return
 				}
 
@@ -233,7 +236,7 @@ func (s *Server) handleConn(conn *core.Conn) {
 						DeliveryMode: amqp.Persistent,
 						Body:         body,
 					}); err != nil {
-						logrus.Error("rmq publish error: ", err)
+						localLog.Error("rmq publish error: ", err)
 						return
 					}
 				}
@@ -244,7 +247,7 @@ func (s *Server) handleConn(conn *core.Conn) {
 		reader := NewVirReader(connServer, uid.NewId(), fmt.Sprintf("local/%s", sid))
 		s.handler.HandleReader(reader)
 
-		logrus.Debug("new publisher: ", reader.Info())
+		localLog.Debug("new publisher: ", reader.Info())
 		// we have to transcode this
 		rtmpUrl := fmt.Sprintf("rtmp://127.0.0.1:1935/local/%s", sid)
 
@@ -258,35 +261,35 @@ func (s *Server) handleConn(conn *core.Conn) {
 		).CombinedOutput()
 		ffprobeCancel()
 		if err != nil {
-			logrus.Errorf("failed to read stream: %s %s %s", rtmpUrl, err.Error(), data)
+			localLog.Errorf("failed to read stream: %s %s %s", rtmpUrl, err.Error(), data)
 			return
 		}
 		mp := FFProbeData{}
 		if err := json.Unmarshal(data, &mp); err != nil {
-			logrus.Error("failed to read stream: ", err)
+			localLog.Error("failed to read stream: ", err)
 			return
 		}
 		// we have to figure out what the transcode is
 
 		audio := mp.GetAudio()
 		if audio.CodecType == "" {
-			logrus.Error("could not find audio track")
+			localLog.Error("could not find audio track")
 			return
 		}
 		video := mp.GetVideo()
 		if video.CodecType == "" {
-			logrus.Error("could not find video track")
+			localLog.Error("could not find video track")
 			return
 		}
 
 		bitrate, _ := strconv.Atoi(video.BitRate)
 		if bitrate == 0 {
-			logrus.Error("bad video bitrate")
+			localLog.Error("bad video bitrate")
 			return
 		}
 
 		if bitrate > 12*1024*1024 { // 12000Kbps
-			logrus.Error("bad video bitrate, bitrate too high: ", bitrate)
+			localLog.Error("bad video bitrate, bitrate too high: ", bitrate)
 			return
 		}
 
@@ -295,18 +298,18 @@ func (s *Server) handleConn(conn *core.Conn) {
 
 		_fps := strings.SplitN(video.RFrameRate, "/", 2)
 		if len(_fps) != 2 {
-			logrus.Error("bad video fps: ", video.RFrameRate)
+			localLog.Error("bad video fps: ", video.RFrameRate)
 			return
 		}
 		fpsLeft, _ := strconv.Atoi(_fps[0])
 		fpsRight, _ := strconv.Atoi(_fps[1])
 		fps := float64(fpsLeft) / float64(fpsRight)
 		if fps > 120 {
-			logrus.Error("bad video fps, fps too high: ", fps)
+			localLog.Error("bad video fps, fps too high: ", fps)
 			return
 		}
 		if fps < 20 {
-			logrus.Error("bad video fps, fps too low: ", fps)
+			localLog.Error("bad video fps, fps too low: ", fps)
 			return
 		}
 
@@ -350,6 +353,20 @@ func (s *Server) handleConn(conn *core.Conn) {
 			fmt.Sprintf("%s/%s.flv", s.gCtx.Config().RTMP.WritePath, vodID.Hex()),
 		)
 
+		stdErr, _ := ffmpegCmd.StderrPipe()
+		defer stdErr.Close()
+
+		go func() {
+			reader := textproto.NewReader(bufio.NewReader(stdErr))
+			for {
+				line, err := reader.ReadLine()
+				localLog.Debug("ffmpeg output: ", line)
+				if err != nil {
+					return
+				}
+			}
+		}()
+
 		ffmpegCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: 0}
 
 		go func() {
@@ -359,7 +376,7 @@ func (s *Server) handleConn(conn *core.Conn) {
 			}()
 			// this function must run in a different context
 			if err := ffmpegCmd.Run(); err != nil {
-				logrus.Error("failed to run transcoder: ", err)
+				localLog.Error("failed to run transcoder: ", err)
 			}
 		}()
 
