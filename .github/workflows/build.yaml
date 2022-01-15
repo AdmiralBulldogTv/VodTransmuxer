@@ -1,4 +1,4 @@
-name: Build ReplceMe
+name: Build Transmuxer
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: Build ReplceMe
+    name: Build Transmuxer
     runs-on: self-hosted
 
     steps:
@@ -18,8 +18,8 @@ jobs:
       - name: Log into Harbor Registry
         uses: docker/login-action@v1
         with:
-          registry: harbor.disembark.dev
-          username: robot$deploy-7tv
+          registry: harbor.komodohype.dev
+          username: robot$deploy
           password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: setup docker context for buildx
