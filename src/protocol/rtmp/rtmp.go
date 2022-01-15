@@ -349,8 +349,6 @@ func (s *Server) handleConn(conn *core.Conn) {
 
 		ffmpegCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: 0}
 
-		ffmpegCmd.Stderr = os.Stderr
-
 		go func() {
 			defer func() {
 				cancel()
