@@ -13,7 +13,10 @@ type mon struct {
 }
 
 func (m *mon) Register(r prometheus.Registerer) {
-	r.MustRegister()
+	r.MustRegister(
+		m.currentStreamCount,
+		m.totalStreamDurationSeconds,
+	)
 }
 
 func (m *mon) CurrentStreamCount() prometheus.Gauge {

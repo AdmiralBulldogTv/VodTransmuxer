@@ -178,12 +178,15 @@ func (s *Server) handleConn(conn *core.Conn) {
 	appname, name, _ := connServer.GetInfo()
 	logrus.Debugf("handleConn: IsPublisher=%v", connServer.IsPublisher())
 	if connServer.IsPublisher() {
+		s.gCtx.Inst().Prometheus.CurrentStreamCount().Inc()
 		logrus.Infof("New stream, %s/%s", appname, name)
 		defer logrus.Infof("Stopped stream, %s/%s", appname, name)
 		s.wg.Add(1)
 		variants := []structures.VodVariant{}
 
 		defer func() {
+			s.gCtx.Inst().Prometheus.CurrentStreamCount().Dec()
+			s.gCtx.Inst().Prometheus.TotalStreamDurationSeconds().Observe(float64(time.Since(start)/time.Millisecond) / 1000)
 			defer s.wg.Done()
 			connServer.Close()
 			if start.After(time.Now().Add(-time.Minute)) {
