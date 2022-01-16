@@ -12,14 +12,12 @@ type Vod struct {
 
 	Title string `json:"title" bson:"title"`
 
-	Categories []VodCategory `json:"category" bson:"category"`
+	Categories []VodCategory `json:"categories" bson:"categories"`
 
 	State      VodState      `json:"vod_state" bson:"vod_state"`
 	Visibility VodVisibility `json:"vod_visibility" bson:"vod_visibility"`
 
 	Variants []VodVariant `json:"variants" bson:"variants"`
-
-	Error string `json:"error" bson:"error"`
 
 	StartedAt time.Time `json:"started_at" bson:"started_at"`
 	EndedAt   time.Time `json:"ended_at" bson:"ended_at"`

@@ -148,10 +148,13 @@ func (s *Server) handleConn(conn *core.Conn) {
 			{
 				lCtx, cancel := context.WithTimeout(ctx, time.Second*5)
 				_, err := s.gCtx.Inst().Mongo.Collection(mongo.CollectionNameVods).InsertOne(lCtx, structures.Vod{
-					ID:        vodID,
-					UserID:    uID,
-					State:     structures.VodStateLive,
-					StartedAt: start,
+					ID:         vodID,
+					UserID:     uID,
+					State:      structures.VodStateLive,
+					StartedAt:  start,
+					Categories: []structures.VodCategory{},
+					Variants:   []structures.VodVariant{},
+					Visibility: structures.VodVisibilityPublic,
 				})
 				cancel()
 				if err != nil {
