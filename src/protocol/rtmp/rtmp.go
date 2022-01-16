@@ -98,6 +98,7 @@ func (s *Server) handleConn(conn *core.Conn) {
 	var (
 		start time.Time
 		vodID primitive.ObjectID
+		user  structures.User
 	)
 
 	connServer.SetCallbackAuth(func() error {
@@ -133,7 +134,6 @@ func (s *Server) handleConn(conn *core.Conn) {
 					return errInternalServer
 				}
 
-				user := structures.User{}
 				if err := res.Decode(&user); err != nil {
 					logrus.Error("mongo decode error: ", err)
 					return errInternalServer
@@ -144,6 +144,69 @@ func (s *Server) handleConn(conn *core.Conn) {
 
 			start = time.Now()
 			vodID = primitive.NewObjectIDFromTimestamp(start)
+
+			redisCh := make(chan string, 10)
+			s.gCtx.Inst().Redis.Subscribe(ctx, redisCh, fmt.Sprintf("stream-events:%s", user.ID.Hex()))
+			go func() {
+				defer close(redisCh)
+				defer cancel()
+				for msg := range redisCh {
+					splits := strings.SplitN(msg, " ", 2)
+					if splits[0] == "drop" && splits[1] != vodID.Hex() {
+						return
+					}
+				}
+			}()
+
+			if err := s.gCtx.Inst().Redis.Publish(ctx, fmt.Sprintf("stream-events:%s", user.ID.Hex()), fmt.Sprintf("drop %s", vodID.Hex())); err != nil {
+				logrus.Error("failed to emit drop event: ", err)
+				return err
+			}
+
+			{
+				i := -1
+			start:
+				i++
+				if i == 8 {
+					logrus.Errorf("failed to aquire stream lock: '%s'", "streamer-live:"+user.ID.Hex())
+					return fmt.Errorf("failed to aquire lock")
+				}
+				set, err := s.gCtx.Inst().Redis.SetNX(ctx, "streamer-live:"+user.ID.Hex(), vodID.Hex(), time.Second*30)
+				if err != nil {
+					logrus.Error("failed to set key: ", err)
+					return err
+				}
+
+				if !set {
+					time.Sleep(time.Millisecond * 250)
+					goto start
+				}
+
+				go func() {
+					tick := time.NewTicker(time.Second * 15)
+					defer func() {
+						cancel()
+						tick.Stop()
+
+						err := s.gCtx.Inst().Redis.Del(ctx, "streamer-live:"+user.ID.Hex())
+						if err != nil {
+							logrus.Error("failed to delete key: ", err)
+						}
+					}()
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case <-tick.C:
+							err := s.gCtx.Inst().Redis.Expire(ctx, "streamer-live:"+user.ID.Hex(), time.Second*30)
+							if err != nil {
+								logrus.Error("failed to expire key: ", err)
+								return
+							}
+						}
+					}
+				}()
+			}
 
 			{
 				lCtx, cancel := context.WithTimeout(ctx, time.Second*5)

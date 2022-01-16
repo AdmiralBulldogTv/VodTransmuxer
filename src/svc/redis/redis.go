@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/AdmiralBulldogTv/VodTransmuxer/src/instance"
 	"github.com/go-redis/redis/v8"
@@ -128,4 +129,20 @@ func (r *RedisInst) Subscribe(ctx context.Context, ch chan string, subscribeTo .
 
 func (r *RedisInst) Ping(ctx context.Context) error {
 	return r.client.Ping(ctx).Err()
+}
+
+func (r *RedisInst) Publish(ctx context.Context, channel string, content string) error {
+	return r.client.Publish(ctx, channel, content).Err()
+}
+
+func (r *RedisInst) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	return r.client.Expire(ctx, key, ttl).Err()
+}
+
+func (r *RedisInst) Del(ctx context.Context, key string) error {
+	return r.client.Del(ctx, key).Err()
+}
+
+func (r *RedisInst) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
+	return r.client.SetNX(ctx, key, value, ttl).Result()
 }
