@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net"
+	"net/http"
 	"net/textproto"
 	"os"
 	"os/exec"
@@ -20,8 +22,10 @@ import (
 	"github.com/AdmiralBulldogTv/VodTransmuxer/src/protocol/rtmp/core"
 	"github.com/AdmiralBulldogTv/VodTransmuxer/src/structures"
 	"github.com/AdmiralBulldogTv/VodTransmuxer/src/svc/mongo"
+	"github.com/AdmiralBulldogTv/VodTransmuxer/src/twitch"
 	"github.com/AdmiralBulldogTv/VodTransmuxer/src/utils/uid"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/nicklaw5/helix"
 	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 	"go.mongodb.org/mongo-driver/bson"
@@ -209,13 +213,69 @@ func (s *Server) handleConn(conn *core.Conn) {
 			}
 
 			{
+				categories := []structures.VodCategory{{
+					Timestamp: start,
+					Name:      "Unknown",
+					ID:        "0",
+					URL:       "https://static-cdn.jtvnw.net/ttv-static/404_boxart.jpg",
+				}}
+				title := "Unknown"
 				lCtx, cancel := context.WithTimeout(ctx, time.Second*5)
-				_, err := s.gCtx.Inst().Mongo.Collection(mongo.CollectionNameVods).InsertOne(lCtx, structures.Vod{
+				auth, err := twitch.GetAuth(s.gCtx, lCtx)
+				cancel()
+				if err == nil {
+					lCtx, cancel = context.WithTimeout(ctx, time.Second*5)
+					req, err := http.NewRequestWithContext(lCtx, "GET", "https://api.twitch.tv/helix/channels?broadcaster_id="+user.Twitch.ID, nil)
+					if err == nil {
+						req.Header.Add("Client-Id", s.gCtx.Config().Twitch.ClientID)
+						req.Header.Add("Authorization", "Bearer "+auth)
+						resp, err := http.DefaultClient.Do(req)
+						if err == nil {
+							defer resp.Body.Close()
+							data, err := ioutil.ReadAll(resp.Body)
+							if err == nil {
+								body := helix.ManyChannelInformation{}
+								if err := json.Unmarshal(data, &body); err == nil && len(body.Channels) != 0 {
+									url := fmt.Sprintf("https://static-cdn.jtvnw.net/ttv-boxart/%s-144x192.jpg", body.Channels[0].GameID)
+									if body.Channels[0].GameName == "" {
+										body.Channels[0].GameName = "Unknown"
+										body.Channels[0].GameID = "0"
+										url = "https://static-cdn.jtvnw.net/ttv-static/404_boxart.jpg"
+									}
+									categories[0] = structures.VodCategory{
+										Timestamp: start,
+										Name:      body.Channels[0].GameName,
+										ID:        body.Channels[0].GameID,
+										URL:       url,
+									}
+									if body.Channels[0].Title != "" {
+										title = body.Channels[0].Title
+									}
+								} else {
+									logrus.Errorf("bad resp from twitch: %s : %s", err, data)
+								}
+							} else {
+								logrus.Error("bad resp from twitch: ", err)
+							}
+						} else {
+							logrus.Error("bad resp from twitch: ", err)
+						}
+					} else {
+						logrus.Error("http: ", err)
+					}
+				} else {
+					logrus.Error("failed to get auth: ", err)
+				}
+				cancel()
+
+				lCtx, cancel = context.WithTimeout(ctx, time.Second*5)
+				_, err = s.gCtx.Inst().Mongo.Collection(mongo.CollectionNameVods).InsertOne(lCtx, structures.Vod{
 					ID:         vodID,
 					UserID:     uID,
 					State:      structures.VodStateLive,
+					Title:      title,
 					StartedAt:  start,
-					Categories: []structures.VodCategory{},
+					Categories: categories,
 					Variants:   []structures.VodVariant{},
 					Visibility: structures.VodVisibilityPublic,
 				})

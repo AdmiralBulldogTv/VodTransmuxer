@@ -126,6 +126,11 @@ type Config struct {
 		Enabled bool   `mapstructure:"enabled" json:"enabled"`
 		Bind    string `mapstructure:"bind" json:"bind"`
 	} `mapstructure:"health" json:"health"`
+
+	Twitch struct {
+		ClientID     string `mapstructure:"client_id" json:"client_id"`
+		ClientSecret string `mapstructure:"client_secret" json:"client_secret"`
+	}
 }
 
 type KeyValue struct {

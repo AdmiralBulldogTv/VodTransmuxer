@@ -143,6 +143,14 @@ func (r *RedisInst) Del(ctx context.Context, key string) error {
 	return r.client.Del(ctx, key).Err()
 }
 
+func (r *RedisInst) Get(ctx context.Context, key string) (interface{}, error) {
+	return r.client.Get(ctx, key).Result()
+}
+
 func (r *RedisInst) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
 	return r.client.SetNX(ctx, key, value, ttl).Result()
+}
+
+func (r *RedisInst) SetEX(ctx context.Context, key string, value string, ttl time.Duration) error {
+	return r.client.SetEX(ctx, key, value, ttl).Err()
 }
