@@ -188,7 +188,7 @@ func (s *Server) handleConn(conn *core.Conn) {
 						cancel()
 						tick.Stop()
 
-						err := s.gCtx.Inst().Redis.Del(ctx, "streamer-live:"+user.ID.Hex())
+						err := s.gCtx.Inst().Redis.Del(context.Background(), "streamer-live:"+user.ID.Hex())
 						if err != nil {
 							logrus.Error("failed to delete key: ", err)
 						}
